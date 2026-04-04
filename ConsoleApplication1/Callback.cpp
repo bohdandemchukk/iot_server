@@ -2,7 +2,7 @@
 #include <string>
 
 void Callback::message_arrived(mqtt::const_message_ptr msg) {
-
+	
 	std::string payload{ msg->to_string() };
 	std::cout << "Message received: " << payload << '\n';
 

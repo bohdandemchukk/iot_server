@@ -5,7 +5,7 @@
 #include "InfluxWriter.h"
 #include "Callback.h"
 
-const std::string SERVER_URL{"ssl://4c6fd5b08f67481cb2b10335dd04aeba.s1.eu.hivemq.cloud:8883"};
+const std::string SERVER_URL{std::getenv("MQTT_URL")};
 const std::string CLIENT_ID{ "cpp-server" };
 const std::string TOPIC{ "project/weather" };
 const char* username_env { std::getenv("MQTT_USERNAME") };
@@ -27,7 +27,7 @@ int main() {
 	con_opts.set_user_name(USERNAME);
 	con_opts.set_password(PASSWORD);
 
-	InfluxWriter writer{};
+	InfluxWriter writer{"localhost", "8181", "/api/v3/write_lp?db=weather_db&precision=auto"};
 	Callback cb{writer};
 	client.set_callback(cb);
 	
