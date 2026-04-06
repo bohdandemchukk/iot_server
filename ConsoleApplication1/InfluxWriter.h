@@ -14,8 +14,9 @@ namespace asio = boost::asio;
 class InfluxWriter {
 public:
 
-	InfluxWriter(const std::string& host, const std::string& port, const std::string& database);
+	InfluxWriter(asio::io_context& io_context, const std::string& host, const std::string& port, const std::string& database);
 	~InfluxWriter();
+	void doWrite(const std::string& line);
 	void write(const std::string& line);
 
 private:
@@ -28,7 +29,7 @@ private:
 	std::string m_host{};
 	std::string m_port{};
 	std::string m_database{};
-	asio::io_context m_io_context{};
+	asio::io_context& m_io_context;
 	beast::tcp_stream m_stream;
 	std::string m_INFLUXDB3_AUTH_TOKEN {};
 };

@@ -3,7 +3,9 @@
 #include <thread>
 #include <chrono>
 #include "InfluxWriter.h"
+#include "HttpServer.h"
 #include "Callback.h"
+#include "WeatherCache.h"
 
 const std::string SERVER_URL{std::getenv("MQTT_URL")};
 const std::string CLIENT_ID{ "cpp-server" };
@@ -27,19 +29,24 @@ int main() {
 	con_opts.set_user_name(USERNAME);
 	con_opts.set_password(PASSWORD);
 
-	InfluxWriter writer{"localhost", "8181", "/api/v3/write_lp?db=weather_db&precision=auto"};
-	Callback cb{writer};
+	asio::io_context io_context;
+	
+	WeatherCache cache{};
+
+	HttpServer httpServer{io_context, 8080, cache};
+	InfluxWriter writer{io_context, "localhost", "8181", "weather_db"};
+	Callback cb{writer, cache};
 	client.set_callback(cb);
 	
 	try {
-		std::cout << "Connecting..." << '\n';
+		std::cout << "Connecting to MQTT..." << '\n';
 		client.connect(con_opts)->wait();
-		std::cout << "Connected!" << '\n';
+		std::cout << "Connected to MQTT!" << '\n';
 
 		client.subscribe(TOPIC, 1)->wait();
 
-		std::cout << "Subscribed to topic: " << TOPIC << '\n';
-
+		std::cout << "Subscribed to MQTT topic: " << TOPIC << '\n';
+		httpServer.run();
 		while (true) {
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
