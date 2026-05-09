@@ -12,7 +12,7 @@ InfluxReader::InfluxReader(asio::io_context& io_context, const std::string& host
     : m_io_context{io_context}, m_host{host}, m_port{port}, m_stream{m_io_context}, m_token(std::getenv("INFLUXDB3_AUTH_TOKEN")),
     m_database{database}
 {
-    connect();
+    std::cout << "InfluxReader token: [" << m_token << "...]\n";
 }
 
 
@@ -29,10 +29,12 @@ void InfluxReader::connect() {
 
 
 std::string InfluxReader::query(const std::string& sql) {
+    if (!m_stream.socket().is_open()) {
+        connect();
+    }
     try {
         return doQuery(sql);
     } catch (...) {
-        std::cout << "InfluxReader: reconnecting after failure...\n";
         connect();
         return doQuery(sql);
     }

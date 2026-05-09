@@ -13,8 +13,12 @@ const std::string TOPIC{ "project/weather" };
 const char* username_env { std::getenv("MQTT_USERNAME") };
 const char* password_env { std::getenv("MQTT_PASSWORD") };
 
-const std::string USERNAME{ username_env };
-const std::string PASSWORD{ password_env };
+const std::string INFLUX_HOST{ std::getenv("INFLUXDB_HOST") ? std::getenv("INFLUXDB_HOST") : "localhost" };
+const std::string INFLUX_PORT{ std::getenv("INFLUXDB_PORT") ? std::getenv("INFLUXDB_PORT") : "8181" };
+const std::string INFLUX_DB{ std::getenv("INFLUXDB_BUCKET") ? std::getenv("INFLUXDB_BUCKET") : "weather_db" };
+
+const std::string USERNAME{ username_env ? username_env : "" };
+const std::string PASSWORD{ password_env ? password_env : "" };
 
 
 
@@ -30,11 +34,12 @@ int main() {
 	con_opts.set_password(PASSWORD);
 
 	asio::io_context io_context;
-	
+	asio::io_context http_io_context;
+
 	WeatherCache cache{};
 
-	HttpServer httpServer{io_context, 8080, cache};
-	InfluxWriter writer{io_context, "localhost", "8181", "weather_db"};
+	HttpServer httpServer{http_io_context, 8080, cache, INFLUX_HOST, INFLUX_PORT, INFLUX_DB};
+	InfluxWriter writer{io_context, INFLUX_HOST, INFLUX_PORT, INFLUX_DB};
 	Callback cb{writer, cache};
 	client.set_callback(cb);
 	
@@ -46,10 +51,10 @@ int main() {
 		client.subscribe(TOPIC, 1)->wait();
 
 		std::cout << "Subscribed to MQTT topic: " << TOPIC << '\n';
-		httpServer.run();
-		while (true) {
-			std::this_thread::sleep_for(std::chrono::seconds(1));
-		}
+		std::thread http_thread([&]() { httpServer.run(); });
+		http_thread.detach();
+		auto work {asio::make_work_guard(io_context)};
+		io_context.run();
 	}
 	catch (const mqtt::exception& exception) {
 		std::cerr << exception.what() << '\n';

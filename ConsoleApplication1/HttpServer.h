@@ -22,9 +22,12 @@ private:
 
     beast::http::response<beast::http::string_body> handle_request(beast::http::request<beast::http::string_body>& request);
     void handle_session(asio::ip::tcp::socket socket);
+    void add_cors_headers(beast::http::response<beast::http::string_body>& response);
 
 public:
-    HttpServer(asio::io_context& io_context, asio::ip::port_type port, WeatherCache& cache);
+    HttpServer(asio::io_context& io_context, asio::ip::port_type port, 
+           WeatherCache& cache, const std::string& influx_host,
+           const std::string& influx_port, const std::string& influx_db);
 
     void run();
 

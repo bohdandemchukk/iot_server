@@ -7,7 +7,7 @@ namespace asio = boost::asio;
 InfluxWriter::InfluxWriter(asio::io_context& io_context, const std::string& host, const std::string& port, const std::string& database)
 	: m_io_context{io_context}, m_host{host}, m_port{port}, m_stream{m_io_context}, m_database{database}, m_INFLUXDB3_AUTH_TOKEN { std::getenv("INFLUXDB3_AUTH_TOKEN") }
 	{
-		connect();
+		std::cout << "InfluxReader token: [" << m_INFLUXDB3_AUTH_TOKEN << "...]\n";
 	}
 
 InfluxWriter::~InfluxWriter() {
@@ -60,7 +60,7 @@ void InfluxWriter::doWrite(const std::string& line) {
 	beast::http::read(m_stream, buffer, response);
 
 	std::cout << "InfluxDB response: " << response.result_int() << '\n';
-
+	
 	if (response.result() != beast::http::status::no_content && response.result() != beast::http::status::ok) 
 	{
     	throw std::runtime_error("Influx write failed: " + response.body());
@@ -68,7 +68,9 @@ void InfluxWriter::doWrite(const std::string& line) {
 }
 
 void InfluxWriter::write(const std::string& line) {
-
+	if (!isConnected()) {
+        connect();
+    }
 	try {
 		doWrite(line);
 	} catch (...) {
@@ -76,10 +78,5 @@ void InfluxWriter::write(const std::string& line) {
         connect();
         doWrite(line);
 	}
-
-	
-
-	
-
 }
 
