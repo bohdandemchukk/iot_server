@@ -40,7 +40,7 @@ int main() {
 
 	HttpServer httpServer{http_io_context, 8080, cache, INFLUX_HOST, INFLUX_PORT, INFLUX_DB};
 	InfluxWriter writer{io_context, INFLUX_HOST, INFLUX_PORT, INFLUX_DB};
-	Callback cb{writer, cache};
+	Callback cb{io_context, writer, cache};
 	client.set_callback(cb);
 	
 	try {

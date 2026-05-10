@@ -3,24 +3,20 @@
 
 #include <optional>
 #include <string>
+#include <shared_mutex>
 #include <mutex>
-
-struct WeatherData {
-    float temperature{};
-    float humidity{};
-    float pressure{};
-    std::string raw{};
-};
+#include "WeatherData.h"
 
 class WeatherCache {
 
+public:
+    void update(WeatherData data);
+    std::optional<WeatherData> get() const;
+
 private:
     std::optional<WeatherData> m_latest{};
-    std::mutex m_mutex{};
+    mutable std::shared_mutex m_mutex{};
 
-public:
-    void update(const WeatherData& data);
-    std::optional<WeatherData> get();
 };
 
 #endif

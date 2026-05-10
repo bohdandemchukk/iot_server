@@ -8,11 +8,10 @@
 namespace beast = boost::beast;
 namespace asio = boost::asio;
 
-InfluxReader::InfluxReader(asio::io_context& io_context, const std::string& host, const std::string& port, const std::string& database)
+InfluxReader::InfluxReader(asio::io_context& io_context, std::string host, std::string port, std::string database)
     : m_io_context{io_context}, m_host{host}, m_port{port}, m_stream{m_io_context}, m_token(std::getenv("INFLUXDB3_AUTH_TOKEN")),
     m_database{database}
 {
-    std::cout << "InfluxReader token: [" << m_token << "...]\n";
 }
 
 

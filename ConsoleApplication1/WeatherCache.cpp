@@ -1,12 +1,13 @@
 #include "WeatherCache.h"
+#include "WeatherData.h"
+#include <optional>
 
-
-void WeatherCache::update(const WeatherData& data) {
-    std::lock_guard lock(m_mutex);
-    m_latest = data;
+void WeatherCache::update(WeatherData data) {
+    std::unique_lock lock{m_mutex};
+    m_latest = std::move(data);
 }
 
-std::optional<WeatherData> WeatherCache::get() {
-    std::lock_guard lock(m_mutex);
+std::optional<WeatherData> WeatherCache::get() const { 
+    std::shared_lock lock{m_mutex};
     return m_latest;
 }
