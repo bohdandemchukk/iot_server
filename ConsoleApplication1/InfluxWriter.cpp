@@ -14,11 +14,7 @@ InfluxWriter::InfluxWriter(asio::io_context& io_context, std::string host, std::
 	  m_port{std::move(port)}, 
 	  m_stream{m_io_context}, 
 	  m_database{std::move(database)}, 
-	  m_token {[]() -> std::string {
-		auto result {read_env("INFLUXDB3_AUTH_TOKEN")};
-		if (!result) throw std::runtime_error(result.error());
-		return std::move(*result);
-	  }()}
+	  m_token {env::require("INFLUXDB3_AUTH_TOKEN")}
 	{
 	}
 
@@ -50,7 +46,7 @@ asio::awaitable<std::expected<void, std::string>> InfluxWriter::connect() {
 }
 
 
-asio::awaitable<std::expected<void, std::string>> InfluxWriter::doWrite(std::string line) {
+asio::awaitable<std::expected<void, std::string>> InfluxWriter::doWrite(std::string_view line) {
 
 	try {
 		beast::http::request<beast::http::string_body> request {
@@ -89,8 +85,8 @@ asio::awaitable<std::expected<void, std::string>> InfluxWriter::doWrite(std::str
 
 asio::awaitable<std::expected<void, std::string>> InfluxWriter::write(std::string line) {
 	if (!m_stream.socket().is_open()) {
-        if (auto res {co_await connect()}; !res) {
-			co_return res;
+        if (auto result {co_await connect()}; !result) {
+			co_return std::unexpected(result.error());
 		}
     }
 
@@ -98,8 +94,8 @@ asio::awaitable<std::expected<void, std::string>> InfluxWriter::write(std::strin
 	if (!result) {
 		std::println("[InfluxWriter] Failed to write, reconnecting...");
 
-		if (auto res {co_await connect()}; !res) {
-			co_return res;
+		if (auto result {co_await connect()}; !result) {
+			co_return std::unexpected(result.error());
 		}
 
 		co_return co_await doWrite(line);

@@ -4,75 +4,103 @@
 #include <memory>
 #include <string>
 #include <stdexcept>
+#include "env_utility.h"
+#include <print>
 
 namespace beast = boost::beast;
 namespace asio = boost::asio;
 
 InfluxReader::InfluxReader(asio::io_context& io_context, std::string host, std::string port, std::string database)
-    : m_io_context{io_context}, m_host{host}, m_port{port}, m_stream{m_io_context}, m_token(std::getenv("INFLUXDB3_AUTH_TOKEN")),
-    m_database{database}
+    : m_io_context{io_context}, 
+    m_host{std::move(host)}, 
+    m_port{std::move(port)}, 
+    m_stream{m_io_context},
+    m_token { env::require("INFLUXDB3_AUTH_TOKEN") },
+    m_database{std::move(database)}
 {
 }
 
 
-void InfluxReader::connect() {
+asio::awaitable<std::expected<void, std::string>> InfluxReader::connect() {
     try {
         asio::ip::tcp::resolver resolver{m_io_context};
-        auto results {resolver.resolve(m_host, m_port)};
-        m_stream.connect(results);
-        std::cout << "Influx Reader connected! " << '\n';
+        auto results { co_await resolver.async_resolve(m_host, m_port, asio::use_awaitable)};
+
+        m_stream.expires_after(std::chrono::seconds(5));
+
+        co_await m_stream.async_connect(results, asio::use_awaitable);
+        std::println("[InfluxReader] Connected to {}:{}", m_host, m_port);
+        
+        co_return std::expected<void, std::string>{};
     } catch (const std::exception& e) {
-        std::cerr << "Influx Reader couldn't connect: " << e.what() << '\n';
+        co_return std::unexpected(std::string("[InfluxReader] Failed to connect: ") + e.what());
     }
 }
 
 
-std::string InfluxReader::query(const std::string& sql) {
+asio::awaitable<std::expected<std::string, std::string>> InfluxReader::query(const std::string& sql) {
     if (!m_stream.socket().is_open()) {
-        connect();
+        if (auto result { co_await connect() }; !result) {
+            co_return std::unexpected(result.error());
+        }
     }
+    
+    auto result {co_await doQuery(sql)};
+    if (!result) {
+        std::println("[InfluxReader] Reconnecting after failure...");
+        if (auto result {co_await connect()}; !result) {
+            co_return std::unexpected(result.error());
+        }
+
+        co_return co_await doQuery(sql);
+    };
+
+    co_return result;
+}
+
+
+
+
+asio::awaitable<std::expected<std::string, std::string>> InfluxReader::doQuery(std::string_view sql) {
+
     try {
-        return doQuery(sql);
-    } catch (...) {
-        connect();
-        return doQuery(sql);
+        std::string target {"/api/v3/query_sql?db=" + m_database + "&q=" + url_encode(sql)};
+
+        beast::http::request<beast::http::string_body> request{beast::http::verb::get, target, 11};
+        request.set(beast::http::field::host, m_host);
+        request.set(beast::http::field::authorization, "Bearer " + m_token);
+        request.set(beast::http::field::connection, "keep-alive");
+        request.prepare_payload();
+
+        m_stream.expires_after(std::chrono::seconds(10));
+
+        co_await beast::http::async_write(m_stream, request, asio::use_awaitable);
+
+        beast::flat_buffer buffer{};
+        beast::http::response<beast::http::string_body> response{};
+        co_await beast::http::async_read(m_stream, buffer, response, asio::use_awaitable);
+
+        if (response.result() != beast::http::status::ok) {
+            co_return std::unexpected(std::string("[InfluxReader] doQuery failed: ") + std::to_string(response.result_int()) + " " + response.body());
+        }
+
+        co_return response.body();
+    } catch (const std::exception& e) {
+        co_return std::unexpected(std::string("[InfluxReader] doQuery caught an exception: ") + e.what());
     }
 }
 
-std::string InfluxReader::doQuery(const std::string& sql) {
-    std::string target {"/api/v3/query_sql?db=" + m_database + "&q=" + url_encode(sql)};
-
-    beast::http::request<beast::http::string_body> request{beast::http::verb::get, target, 11};
-    request.set(beast::http::field::host, m_host);
-    request.set(beast::http::field::authorization, "Bearer " + m_token);
-    request.set(beast::http::field::connection, "keep-alive");
-    request.prepare_payload();
-
-    m_stream.expires_after(std::chrono::seconds(10));
-
-    beast::http::write(m_stream, request);
-
-    beast::flat_buffer buffer{};
-    beast::http::response<beast::http::string_body> response{};
-    beast::http::read(m_stream, buffer, response);
-
-    if (response.result() != beast::http::status::ok) {
-        throw std::runtime_error("InfluxDB query failed: " + std::to_string(response.result_int()) + " " + response.body());
-    }
-
-    return response.body();
-}
-
-std::string InfluxReader::url_encode(const std::string& value) {
+std::string InfluxReader::url_encode(std::string_view value) {
     std::string result{};
-    for (char c : value) {
-        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+    result.reserve(value.size());
+    for (unsigned char c : value) {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
             result += c;
         } else if (c == ' ') {
             result += '+';
         } else {
             char buf[4];
-            snprintf(buf, sizeof(buf), "%%%02X", (unsigned char)c);
+            std::snprintf(buf, sizeof(buf), "%%%02X", (unsigned char)c);
             result += buf;
         }
     }

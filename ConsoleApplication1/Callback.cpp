@@ -17,9 +17,8 @@ void Callback::message_arrived(mqtt::const_message_ptr msg) {
 	std::string payload{ msg->to_string() };
 	std::println("[MQTT] Message received: {}", payload);
 
-	std::string influx_line {"weather " + payload};
 	asio::co_spawn(m_io_context, 
-		m_writer.write(influx_line),
+		m_writer.write("weather " + payload),
 		[](std::exception_ptr e_ptr, std::expected<void, std::string> result) {
 			if (e_ptr) {
 				try { std::rethrow_exception(e_ptr); }

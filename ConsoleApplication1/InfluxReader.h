@@ -1,7 +1,11 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/awaitable.hpp>
+#include <boost/asio/use_awaitable.hpp>
+#include <boost/beast/version.hpp>
 #include <string>
+#include <expected>
 
 namespace beast = boost::beast;
 namespace asio = boost::asio;
@@ -13,13 +17,14 @@ public:
     InfluxReader(asio::io_context& io_context, std::string host, std::string port, std::string database);
 
    
-    std::string query(const std::string& sql);
-    std::string doQuery(const std::string& sql);
+    asio::awaitable<std::expected<std::string, std::string>> query(const std::string& sql);
+    
 
 private:
 
-    void connect();
+    asio::awaitable<std::expected<void, std::string>> connect();
 
+    asio::awaitable<std::expected<std::string, std::string>> doQuery(std::string_view sql);
 
     std::string m_host{};
     std::string m_port{};
@@ -28,5 +33,5 @@ private:
 
     asio::io_context& m_io_context;
     boost::beast::tcp_stream m_stream;
-    std::string url_encode(const std::string& value);
+    static std::string url_encode(std::string_view value);
 };

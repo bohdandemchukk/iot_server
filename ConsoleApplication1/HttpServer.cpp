@@ -1,64 +1,128 @@
 #include "HttpServer.h"
 #include <iostream>
+#include <print>
+
+namespace beast = boost::beast;
+namespace asio = boost::asio;
 
 HttpServer::HttpServer(asio::io_context& io_context, asio::ip::port_type port,
-                       WeatherCache& cache, const std::string& influx_host,
-                       const std::string& influx_port, const std::string& influx_db)
+                       WeatherCache& cache, std::string influx_host,
+                        std::string influx_port, std::string influx_db)
     : m_io_context{io_context}, 
       m_acceptor{m_io_context, {asio::ip::tcp::v4(), port}},
       m_cache{cache}, 
-      m_reader{m_io_context, influx_host, influx_port, influx_db}
-{}
+      m_reader{m_io_context, std::move(influx_host), std::move(influx_port), std::move(influx_db)}
+{
+    m_acceptor.set_option(asio::socket_base::reuse_address(true));
+}
 
-beast::http::response<beast::http::string_body> HttpServer::handle_request(beast::http::request<beast::http::string_body>& request) {
-    if (request.target() == "/latest") {
+
+void HttpServer::run() {
+    asio::co_spawn(m_io_context, listen(), asio::detached);
+    std::println("[HTTP Server] Listening on port 8080 (hardcoded)");
+}
+
+
+asio::awaitable<void> HttpServer::listen() {
+    while (true) {
+        asio::ip::tcp::socket socket{m_io_context};
+        co_await m_acceptor.async_accept(socket, asio::use_awaitable);
+
+        asio::co_spawn(m_io_context, handle_session(std::move(socket)), [](std::exception_ptr e_ptr) -> void {
+            if (e_ptr) {
+                try {std::rethrow_exception(e_ptr); }
+                catch (const std::exception& e) {
+                    std::println("[HTTP Server] Session caught exception: {}", e.what());
+                }
+            }
+        });
+    }
+}
+
+asio::awaitable<void> HttpServer::handle_session(asio::ip::tcp::socket socket) {
+    beast::flat_buffer buffer{};
+    beast::http::request<beast::http::string_body> request{};
+    beast::error_code ec;
+
+    try {
+        co_await beast::http::async_read(socket, buffer, request, asio::use_awaitable);
+    
+        beast::http::response<beast::http::string_body> response {co_await handle_request(request)};
+
+        co_await beast::http::async_write(socket, response, asio::use_awaitable);  
+    } catch (const std::exception& e) {
+        std::println("[HTTP Server] Session request caught exception: {}", e.what());
+    }
+
+    socket.shutdown(asio::ip::tcp::socket::shutdown_send, ec);
+    if (ec) {
+        std::println("[HTTP Server] Socket shutdown error: {}", ec.message());
+    }
+}
+
+asio::awaitable<beast::http::response<beast::http::string_body>> HttpServer::handle_request(const beast::http::request<beast::http::string_body>& request) {
+
+    const auto version { request.version() };
+    const std::string_view target { request.target() };
+
+    std::println("[HTTP Server] {} {}", std::string(request.method_string()), std::string(target));
+
+    std::println("[HTTP Server] Target: '{}'", std::string(target));
+
+    if (target == "/latest") {
         auto data { m_cache.get() };
 
         if (!data) { 
-            std::cout << "Latest data was not found!" << '\n';
-            return beast::http::response<beast::http::string_body>{
-            beast::http::status::not_found, request.version()
-        };}
-
-        beast::http::response<beast::http::string_body> response{
-            beast::http::status::ok, request.version()
+            std::println("[HTTP Server] Latest data was not found!");
+            co_return error_response(beast::http::status::not_found, version, "Latest data was not found!");
         };
 
-        response.body() = "{ \"data\": \"" + data->raw + "\" }";
+        beast::http::response<beast::http::string_body> response{
+            beast::http::status::ok, version
+        };
+
+        response.set(beast::http::field::content_type, "application/json");
+        response.body() = R"({"data":")" + data->raw + R"("})";
         response.prepare_payload();
         add_cors_headers(response);
-        return response;
+
+        std::println("Latest data was successfully found and returned!");
+        co_return response;
     }
 
-    if (request.target() == "/last_hour") {
-
-        std::cout << "Inside of /last_hour route" << '\n';
+    if (target == "/last_hour") {
         
-        std::string sql {
+        const std::string sql {
             "SELECT * FROM weather WHERE time > now() - interval '1 hour'"
         };
 
-        auto result {m_reader.query(sql)};
+        auto result {co_await m_reader.query(sql)};
 
-        std::cout << result;
+        if (!result) {
+            co_return error_response(beast::http::status::not_found, version, "Last hour data was not found!");
+        }
+
+        std::println("[HTTP Server] Last Hour query result: {}", result ? result.value() : result.error());
 
         beast::http::response<beast::http::string_body> response{
-            beast::http::status::ok, request.version()
+            beast::http::status::ok, version
         };
 
-        response.body() = result;
+        response.set(beast::http::field::content_type, "application/json");
+        response.body() = result.value();
         response.prepare_payload();
         add_cors_headers(response);
-        return response;
+        std::println("Last hour data was successfully found and returned!");
+        co_return response;
     }
 
-    if (request.target().starts_with("/range")) {
+    if (target.starts_with("/range")) {
         std::string from{};
         std::string to{};
 
-        auto pos {request.target().find("?")};
+        auto pos {target.find("?")};
         if (pos != std::string::npos) {
-            std::string query {request.target().substr(pos + 1)};
+            std::string query {target.substr(pos + 1)};
             std::stringstream ss {query};
             std::string item{};
 
@@ -78,66 +142,31 @@ beast::http::response<beast::http::string_body> HttpServer::handle_request(beast
             "SELECT * FROM weather WHERE time >= '" + from + "' AND time <= '" + to + "'"
         };
 
-        std::string result {m_reader.query(sql)};
+        auto result {co_await m_reader.query(sql)};
+
+        if (!result) {
+            co_return error_response(beast::http::status::not_found, version, "Data for " + from + " to " + to + " was not found!");
+        }
+
+        std::println("[HTTP Server] Range query result: {}", result ? result.value() : result.error());
 
         beast::http::response<beast::http::string_body> response{
-            beast::http::status::ok, request.version()
+            beast::http::status::ok, version
         };
 
-        response.body() = result;
+        response.set(beast::http::field::content_type, "application/json");
+        response.body() = result.value();
         response.prepare_payload();
         add_cors_headers(response);
-        return response;
+        co_return response;
 
     }
 
-    return beast::http::response<beast::http::string_body>{
-        beast::http::status::not_found, request.version()
-    };
+    co_return error_response(beast::http::status::not_found, version, "Endpoint was not found!");
 }
 
-void HttpServer::handle_session(asio::ip::tcp::socket socket) {
-    beast::flat_buffer buffer{};
 
-    beast::http::request<beast::http::string_body> request{};
 
-    beast::error_code ec{};
-    beast::http::read(socket, buffer, request, ec);
-    
-    if (ec) {
-        std::cerr << "Read error: " << ec.message() << '\n';
-        return;
-    }
-
-    beast::http::response<beast::http::string_body> response{
-        beast::http::status::internal_server_error, request.version()
-    };
-
-    try {
-        response = handle_request(request);
-    } catch (const std::exception& e) {
-        std::cerr << "Request error: " << e.what() << '\n';
-        response.body() = e.what();
-        response.prepare_payload();
-    }
-
-    beast::http::write(socket, response);
-
-    beast::error_code error_code{};
-    socket.shutdown(asio::ip::tcp::socket::shutdown_send, error_code);
-}
-
-void HttpServer::run() {
-
-    std::cout << "HTTP server is running!" << '\n';
-    while (true) {
-        asio::ip::tcp::socket socket{m_io_context};
-
-        m_acceptor.accept(socket);
-
-        handle_session(std::move(socket));
-    }
-}
 
 void HttpServer::add_cors_headers(beast::http::response<beast::http::string_body>& response) {
     response.set(beast::http::field::access_control_allow_origin, "*");
@@ -145,3 +174,15 @@ void HttpServer::add_cors_headers(beast::http::response<beast::http::string_body
     response.set(beast::http::field::access_control_allow_headers, "Content-Type");
 }
 
+beast::http::response<beast::http::string_body> HttpServer::error_response(
+    beast::http::status status,
+    unsigned int version,
+    const std::string& message) const 
+{
+    beast::http::response<beast::http::string_body> response{status, version};
+    response.set(beast::http::field::content_type, "application/json");
+    response.body() = R"({"error":")" + message + R"("})";
+    response.prepare_payload();
+    add_cors_headers(response);
+    return response;
+}

@@ -26,7 +26,7 @@ public:
 private:
 
 	asio::awaitable<std::expected<void, std::string>> connect();
-	asio::awaitable<std::expected<void, std::string>> doWrite(std::string line);
+	asio::awaitable<std::expected<void, std::string>> doWrite(std::string_view line);
 	void disconnect() noexcept;
 
 	asio::io_context& m_io_context;
