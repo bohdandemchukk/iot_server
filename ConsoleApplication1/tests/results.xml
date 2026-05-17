@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="11" failures="0" disabled="0" errors="0" time="0.009" timestamp="2026-05-11T19:42:43.499" name="AllTests">
+  <testsuite name="WeatherCacheTest" tests="4" failures="0" disabled="0" skipped="0" errors="0" time="0.003" timestamp="2026-05-11T19:42:43.500">
+    <testcase name="EmptyOnStart" file="tests.cpp" line="8" status="run" result="completed" time="0." timestamp="2026-05-11T19:42:43.500" classname="WeatherCacheTest" />
+    <testcase name="UpdateAndGet" file="tests.cpp" line="13" status="run" result="completed" time="0." timestamp="2026-05-11T19:42:43.500" classname="WeatherCacheTest" />
+    <testcase name="UpdateOverwritesPrevious" file="tests.cpp" line="20" status="run" result="completed" time="0." timestamp="2026-05-11T19:42:43.500" classname="WeatherCacheTest" />
+    <testcase name="ConcurrentReadWrite" file="tests.cpp" line="27" status="run" result="completed" time="0.003" timestamp="2026-05-11T19:42:43.500" classname="WeatherCacheTest" />
+  </testsuite>
+  <testsuite name="EnvTest" tests="7" failures="0" disabled="0" skipped="0" errors="0" time="0.004" timestamp="2026-05-11T19:42:43.504">
+    <testcase name="MissingVar" file="tests.cpp" line="44" status="run" result="completed" time="0." timestamp="2026-05-11T19:42:43.504" classname="EnvTest" />
+    <testcase name="MissingVarErrorMessage" file="tests.cpp" line="49" status="run" result="completed" time="0." timestamp="2026-05-11T19:42:43.504" classname="EnvTest" />
+    <testcase name="PresentVar" file="tests.cpp" line="55" status="run" result="completed" time="0." timestamp="2026-05-11T19:42:43.504" classname="EnvTest" />
+    <testcase name="RequireThrowsOnMissing" file="tests.cpp" line="64" status="run" result="completed" time="0.004" timestamp="2026-05-11T19:42:43.504" classname="EnvTest" />
+    <testcase name="RequireReturnsValueWhenPresent" file="tests.cpp" line="71" status="run" result="completed" time="0." timestamp="2026-05-11T19:42:43.508" classname="EnvTest" />
+    <testcase name="GetOrDefault" file="tests.cpp" line="81" status="run" result="completed" time="0." timestamp="2026-05-11T19:42:43.508" classname="EnvTest" />
+    <testcase name="GetOrReturnsValueWhenPresent" file="tests.cpp" line="86" status="run" result="completed" time="0." timestamp="2026-05-11T19:42:43.508" classname="EnvTest" />
+  </testsuite>
+</testsuites>
