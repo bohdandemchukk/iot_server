@@ -1,5 +1,5 @@
-#include "InfluxWriter.h"
-#include "env_utility.h"
+#include "../include/InfluxWriter.h"
+#include "../utility/env_utility.h"
 #include <iostream>
 #include <chrono>
 #include <cstdlib>

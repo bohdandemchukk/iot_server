@@ -1,5 +1,5 @@
-#include "WeatherCache.h"
-#include "WeatherData.h"
+#include "../include/WeatherCache.h"
+#include "../include/WeatherData.h"
 #include <optional>
 
 void WeatherCache::update(WeatherData data) {
