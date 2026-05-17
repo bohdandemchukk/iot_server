@@ -8,27 +8,28 @@
 namespace beast = boost::beast;
 namespace asio = boost::asio;
 
-InfluxWriter::InfluxWriter(asio::io_context& io_context, std::string host, std::string port, std::string database)
-	: m_io_context{io_context},
+InfluxWriter::InfluxWriter(ConnectionPool& pool, std::string host, std::string port, std::string database)
+	: m_pool{pool},
 	  m_host{std::move(host)}, 
 	  m_port{std::move(port)}, 
-	  m_stream{m_io_context}, 
 	  m_database{std::move(database)}, 
 	  m_token {env::require("INFLUXDB3_AUTH_TOKEN")}
 	{
 	}
 
-InfluxWriter::~InfluxWriter() {
+/*InfluxWriter::~InfluxWriter() {
 	disconnect();
 }
+*/
 
-void InfluxWriter::disconnect() noexcept {
+/*void InfluxWriter::disconnect() noexcept {
     beast::error_code ec;
     m_stream.socket().shutdown(asio::ip::tcp::socket::shutdown_both, ec);
     m_stream.socket().close(ec);
 }
+*/
 
-asio::awaitable<std::expected<void, std::string>> InfluxWriter::connect() {
+/*asio::awaitable<std::expected<void, std::string>> InfluxWriter::connect() {
 	try {
 		if (m_stream.socket().is_open()) disconnect();
 		std::println("[DEBUG] host='{}' port='{}'", m_host, m_port);
@@ -44,11 +45,16 @@ asio::awaitable<std::expected<void, std::string>> InfluxWriter::connect() {
 		co_return std::unexpected(std::string("[InfluxWriter] Failed to connect: ") + e.what());
 	}
 }
+*/
 
 
 asio::awaitable<std::expected<void, std::string>> InfluxWriter::doWrite(std::string_view line) {
 
 	try {
+
+		ConnectionPool::ConnectionGuard guard = co_await m_pool.acquire();
+		beast::tcp_stream& stream { *guard.stream };
+
 		beast::http::request<beast::http::string_body> request {
 			beast::http::verb::post,
 			"/api/v3/write_lp?db=" + m_database,
@@ -61,15 +67,17 @@ asio::awaitable<std::expected<void, std::string>> InfluxWriter::doWrite(std::str
 		request.body() = line;
 		request.prepare_payload();
 
-		m_stream.expires_after(std::chrono::seconds(5));
+		stream.expires_after(std::chrono::seconds(5));
 
-		co_await beast::http::async_write(m_stream, request, asio::use_awaitable);
+		co_await beast::http::async_write(stream, request, asio::use_awaitable);
 		
 		beast::http::response<beast::http::string_body> response{};
 		beast::flat_buffer buffer{};
-		co_await beast::http::async_read(m_stream, buffer, response, asio::use_awaitable);
+		co_await beast::http::async_read(stream, buffer, response, asio::use_awaitable);
 
 		std::println("[InfluxWriter] InfluxDB Response: {}", response.result_int());
+
+	
 		
 		if (response.result() != beast::http::status::no_content && response.result() != beast::http::status::ok) 
 		{
@@ -84,7 +92,7 @@ asio::awaitable<std::expected<void, std::string>> InfluxWriter::doWrite(std::str
 }
 
 asio::awaitable<std::expected<void, std::string>> InfluxWriter::write(std::string line) {
-	if (!m_stream.socket().is_open()) {
+	/*if (!m_stream.socket().is_open()) {
         if (auto result {co_await connect()}; !result) {
 			co_return std::unexpected(result.error());
 		}
@@ -94,6 +102,10 @@ asio::awaitable<std::expected<void, std::string>> InfluxWriter::write(std::strin
 	if (!result) {
 		std::println("[InfluxWriter] Failed to write, reconnecting...");
 
+		beast::error_code ec;
+        m_stream.socket().shutdown(asio::ip::tcp::socket::shutdown_both, ec);
+        m_stream.socket().close(ec);
+		
 		if (auto result {co_await connect()}; !result) {
 			co_return std::unexpected(result.error());
 		}
@@ -102,5 +114,15 @@ asio::awaitable<std::expected<void, std::string>> InfluxWriter::write(std::strin
 	}
 
 	co_return std::expected<void, std::string>{};
+	*/
+
+	auto result {co_await doWrite(line)};
+
+	if (!result) {
+		std::println("[InfluxWriter] Write to InfluxDB failed, retrying...");
+		co_return co_await doWrite(line);
+	}
+
+	co_return result;
 }
 

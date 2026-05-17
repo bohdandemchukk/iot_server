@@ -15,13 +15,12 @@
 #include "Callback.h"
 #include "WeatherCache.h"
 #include "env_utility.h"
+#include "ConnectionPool.h"
+
+
 
 namespace beast = boost::beast;
 namespace asio = boost::asio;
-
-
-
-
 
 
 int main() {
@@ -41,8 +40,9 @@ int main() {
 
 		asio::io_context io_context;
 		WeatherCache cache{};
-		HttpServer httpServer{io_context, 8080, cache, INFLUX_HOST, INFLUX_PORT, INFLUX_DB};
-		InfluxWriter writer{io_context, INFLUX_HOST, INFLUX_PORT, INFLUX_DB};
+		ConnectionPool pool{io_context, INFLUX_HOST, INFLUX_PORT, 5};
+		HttpServer httpServer{pool, io_context, 8080, cache, INFLUX_HOST, INFLUX_PORT, INFLUX_DB};
+		InfluxWriter writer{pool, INFLUX_HOST, INFLUX_PORT, INFLUX_DB};
 
 		mqtt::async_client client{ SERVER_URL, CLIENT_ID };
 		mqtt::connect_options con_opts{};

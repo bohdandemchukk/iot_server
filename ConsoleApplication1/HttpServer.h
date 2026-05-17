@@ -9,6 +9,9 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
+#include <string_view>
+#include "ConnectionPool.h"
+
 
 namespace beast = boost::beast;
 namespace asio = boost::asio;
@@ -16,7 +19,7 @@ namespace asio = boost::asio;
 class HttpServer {
 
 public:
-    HttpServer(asio::io_context& io_context, asio::ip::port_type port, 
+    HttpServer(ConnectionPool& pool, asio::io_context& io_context, asio::ip::port_type port, 
            WeatherCache& cache, std::string influx_host,
            std::string influx_port, std::string influx_db);
 
@@ -25,6 +28,7 @@ public:
 private:
     asio::awaitable<void> listen();
 
+    static bool is_valid_date(std::string_view date);
     asio::awaitable<beast::http::response<beast::http::string_body>> handle_request(const beast::http::request<beast::http::string_body>& request);
     asio::awaitable<void> handle_session(asio::ip::tcp::socket socket);
 
